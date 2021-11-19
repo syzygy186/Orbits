@@ -67,6 +67,107 @@ class Particle:
         self.Tra[1].append(self.Pos.y)
         self.Tra[2].append(self.Pos.z)
 
+class QParticle: 
+    def __init__(self,Name,Mass,Position,Velocity,Acceleration):
+        self.Nam = Name
+        self.Mas = Mass
+        self.Pos = Position
+        self.Vel = Velocity
+        self.Acc = Acceleration
+    
+    def Evolve(self,dt,Omega=Vector(0,0,0)):
+        
+        self.Vel.x += self.Acc.x * dt
+        self.Pos.x += self.Vel.x * dt
+        
+        self.Vel.y += self.Acc.y * dt
+        self.Pos.y += self.Vel.y * dt
+        
+        self.Vel.z += self.Acc.z * dt
+        self.Pos.z += self.Vel.z * dt
+        
+    def __str__(self):
+        return self.Nam + " Position " + str(self.Pos)
+            
+class QSimulator:           
+    def __init__(self,Particles,Omega=Vector(0,0,0)):
+        self.Omega     = Omega
+        self.Velocity  = Vector(0,0,0)
+        self.Particles = Particles
+    
+    def GoToCM(self):
+        R = Vector(0,0,0)
+        P = Vector(0,0,0)
+        M = 0
+        for Particle in self.Particles:
+            R = R + Particle.Mas*Particle.Pos
+            P = P + Particle.Mas*Particle.Vel
+            M = M + Particle.Mas
+        
+        self.Velocity = (1.0/M)*P
+        self.Position = (1.0/M)*R
+        
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Velocity
+            Particle.Pos = Particle.Pos - self.Position
+    
+    def GoToLab(self):
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel + self.Velocity
+    
+    def GoToSynodic(self):
+        
+        self.GoToCM()
+        ICM = 0
+        L = Vector(0,0,0)
+        for Particle in self.Particles:
+            ICM += (Particle.Pos*Particle.Pos)*Particle.Mas
+            L    = L + Particle.Mas * (Particle.Pos @ Particle.Vel)
+        self.Omega = (1.0/ICM)*L
+        
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Omega @ Particle.Pos
+        
+        print("ICM : ",ICM)
+        print("The Anagular Velocity of the Synodic system is:",self.Omega)
+    
+    def SetOmega(self,Omega):
+        self.Omega = Omega
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Omega @ Particle.Pos
+    
+    def Simulate(self,dt):
+          
+        # Interactions
+        
+        for i, Particle1 in enumerate(self.Particles):
+            
+            Particle1.Acc = Vector(0,0,0)
+                
+            # Coriolis Acceleration
+            Particle1.Acc = Particle1.Acc - 2.0*(self.Omega @ Particle1.Vel)
+                
+            # Centrifugal Acceleration
+            Particle1.Acc = Particle1.Acc - self.Omega @ (self.Omega @ Particle1.Pos)
+                
+                            
+            for j, Particle2 in enumerate(self.Particles):
+                if i == j: 
+                    continue
+                    
+                g = G*Particle2.Mas
+                r = Particle2.Pos - Particle1.Pos
+                r3 = pow(r*r,1.5)
+            
+                Particle1.Acc.x += g*r.x/r3
+                Particle1.Acc.y += g*r.y/r3
+                Particle1.Acc.z += g*r.z/r3
+                           
+        # Time Evolution
+        for Particle in self.Particles:
+            Particle.Evolve(dt,self.Omega)
+        
+        
 class Simulator:
     
     def __init__(self,Particles,Omega=Vector(0,0,0)):
