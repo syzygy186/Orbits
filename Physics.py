@@ -9,42 +9,71 @@ G = 4*np.pi**2
 # Distance is Measured in AU
 # Mass is measured in MSun
 
+
+
 class Vector:
+
+    '''
+    3-Dimensional Vector
+    
+    Holds 3 numbers and all the operators associated 
+    with the algebraic manipulations of Vectors in 3D
+    
+    '''
+    
+    # Declare a Vector
     def __init__(self,x,y,z):
         self.x = x
         self.y = y
         self.z = z
     
+    # Addition
     def __add__(self,other):
         return Vector(self.x+other.x,self.y+other.y,self.z+other.z)
     
+    # Subtraction
     def __sub__(self,other):
         return Vector(self.x-other.x,self.y-other.y,self.z-other.z)
     
+    # Inner Product
     @functools.singledispatchmethod
     def __mul__(self, other):
         return (self.x*other.x + self.y*other.y+self.z*other.z)
     
+    # Multiplication by Scalar
     @__mul__.register(float)
     def _(self,other):
         return Vector(self.x*other,self.y*other,self.z*other)
     
+    # Reversed Inner Product
     @functools.singledispatchmethod
     def __rmul__(self, other):
         return (self.x*other.x + self.y*other.y+self.z*other.z)
     
+    # Reversed Scalar Multiplication
     @__rmul__.register(float)
     def _(self,other):
         return Vector(self.x*other,self.y*other,self.z*other)
     
+    # Cross Product
     def __matmul__(self,other):
         return Vector(self.y*other.z-self.z*other.y,self.z*other.x-self.x*other.z,self.x*other.y-self.y*other.x)
     
+    # Print Statement
     def __str__(self):
         return "("+str(self.x)+","+str(self.y)+","+str(self.z)+")"
 
 class Particle:
-    def __init__(self,Name,Mass,Position,Velocity,Acceleration):
+    
+    '''
+    Particles for the Simulator
+    They hold kinematical variables: Position, Velocity and Acceleration
+    And the trajectory of the particle, the time should be managed externally.
+    
+    '''
+    
+    # Define a Partile: Name, Mass, Position and Velocity are Required, Acceleration is optional
+    def __init__(self,Name,Mass,Position,Velocity,Acceleration=Vector(0,0,0)):
         self.Nam = Name
         self.Mas = Mass
         self.Pos = Position
@@ -54,21 +83,22 @@ class Particle:
     
     def Evolve(self,dt,Omega=Vector(0,0,0)):
         
-        self.Vel.x += self.Acc.x * dt
-        self.Pos.x += self.Vel.x * dt
+        # Euler's Method for Time Evolution
+        self.Vel = self.Vel + self.Acc * dt
+        self.Pos = self.Pos + self.Vel * dt
         
-        self.Vel.y += self.Acc.y * dt
-        self.Pos.y += self.Vel.y * dt
-        
-        self.Vel.z += self.Acc.z * dt
-        self.Pos.z += self.Vel.z * dt
-        
+        # Record the Trajectory
         self.Tra[0].append(self.Pos.x)
         self.Tra[1].append(self.Pos.y)
         self.Tra[2].append(self.Pos.z)
 
 class QParticle: 
-    def __init__(self,Name,Mass,Position,Velocity,Acceleration):
+    
+    '''
+    Clone of Particle but faster because Trajectories are not stored
+    '''
+    
+    def __init__(self,Name,Mass,Position,Velocity,Acceleration=Vector(0,0,0)):
         self.Nam = Name
         self.Mas = Mass
         self.Pos = Position
@@ -77,14 +107,9 @@ class QParticle:
     
     def Evolve(self,dt,Omega=Vector(0,0,0)):
         
-        self.Vel.x += self.Acc.x * dt
-        self.Pos.x += self.Vel.x * dt
-        
-        self.Vel.y += self.Acc.y * dt
-        self.Pos.y += self.Vel.y * dt
-        
-        self.Vel.z += self.Acc.z * dt
-        self.Pos.z += self.Vel.z * dt
+        # Euler's Method for Time Evolution
+        self.Vel = self.Vel + self.Acc * dt
+        self.Pos = self.Pos + self.Vel * dt
         
     def __str__(self):
         return self.Nam + " Position " + str(self.Pos)
@@ -170,6 +195,13 @@ class QSimulator:
         
 class Simulator:
     
+    '''
+    
+    Deals with Time management and Interactions
+    
+    '''
+    
+    # Define a Simulator only needs particles, optionally a rotational frquency
     def __init__(self,Particles,Omega=Vector(0,0,0)):
         self.Omega     = Omega
         self.Velocity  = Vector(0,0,0)
@@ -180,7 +212,9 @@ class Simulator:
         self.Potential = []
         self.Kinetic   = []
         self.Jacobi    = []
+        self.Distance  = []
     
+    # Go to the Center of mass
     def GoToCM(self):
         R = Vector(0,0,0)
         P = Vector(0,0,0)
@@ -197,10 +231,25 @@ class Simulator:
             Particle.Vel = Particle.Vel - self.Velocity
             Particle.Pos = Particle.Pos - self.Position
     
+    # Go back to the system where things were defined
     def GoToLab(self):
         for Particle in self.Particles:
             Particle.Vel = Particle.Vel + self.Velocity
+            Particle.Pos = Particle.Pos + self.Position
     
+    
+    def ComputeOmega(self):
+        
+        # L = ICM * Omega
+        self.GoToCM()
+        ICM = 0
+        L = Vector(0,0,0)
+        for Particle in self.Particles:
+            ICM += (Particle.Pos*Particle.Pos)*Particle.Mas
+            L    = L + Particle.Mas * (Particle.Pos @ Particle.Vel)
+        self.Omega = (1.0/ICM)*L
+    
+    # Goes to Synodic, but Dynamics in the Synodic are unstable
     def GoToSynodic(self):
         
         self.GoToCM()
@@ -217,6 +266,7 @@ class Simulator:
         print("ICM : ",ICM)
         print("The Anagular Velocity of the Synodic system is:",self.Omega)
     
+    # Do not use, only for debug
     def SetOmega(self,Omega):
         self.Omega = Omega
         for Particle in self.Particles:
@@ -227,23 +277,41 @@ class Simulator:
         t = 0
         dt = Time/Steps
         
+        self.ComputeOmega()
+        
         while t < Time: 
             t += dt
             k  = 0
             u  = 0
             lz = 0
+            J  = 0
         
             # Interactions
+            
+            if len(self.Particles)>=2:
+                D  = self.Particles[0].Pos - self.Particles[1].Pos
+                D  = np.sqrt(D*D)
         
             for i, Particle1 in enumerate(self.Particles):
+            
+                
+            
+                if i == 2: 
+                    J += (self.Omega*self.Omega)*(Particle1.Pos*Particle1.Pos)
+                    r1 = self.Particles[0].Pos - Particle1.Pos
+                    r2 = self.Particles[1].Pos - Particle1.Pos
+                    J += 2*(self.Particles[0].Mas*G)/(np.sqrt(r1*r1))
+                    J += 2*(self.Particles[1].Mas*G)/(np.sqrt(r2*r2))
+                    Vel = Particle1.Vel - self.Omega @ Particle1.Pos
+                    J += -(Vel*Vel)
             
                 Particle1.Acc = Vector(0,0,0)
                 
                 # Coriolis Acceleration
-                Particle1.Acc = Particle1.Acc - 2.0*(self.Omega @ Particle1.Vel)
+                #Particle1.Acc = Particle1.Acc - 2.0*(self.Omega @ Particle1.Vel)
                 
                 # Centrifugal Acceleration
-                Particle1.Acc = Particle1.Acc - self.Omega @ (self.Omega @ Particle1.Pos)
+                #Particle1.Acc = Particle1.Acc - self.Omega @ (self.Omega @ Particle1.Pos)
                 
                 k += (1./2) * Particle1.Mas * (Particle1.Vel * Particle1.Vel)
                 lz += Particle1.Mas * ((Particle1.Pos @ Particle1.Vel)).z
@@ -272,6 +340,8 @@ class Simulator:
             self.Potential.append(u)
             self.Time.append(t)
             self.Angular.append(lz)
+            self.Jacobi.append(J)
+            self.Distance.append(D)
     
     def GeneratePlots(self):
         plt.clf()
@@ -288,8 +358,24 @@ class Simulator:
         plt.xlabel("yr")
         plt.ylabel("MSun AU^2 yr^-2")
         plt.plot(self.Time,self.Energy,label="Total Energy")
-        plt.plot(self.Time,self.Potential,label="Potential Energy")
-        plt.plot(self.Time,self.Kinetic,label="Kinetic Energy")
+        #plt.plot(self.Time,self.Potential,label="Potential Energy")
+        #plt.plot(self.Time,self.Kinetic,label="Kinetic Energy")
+        plt.legend(loc="best")
+        plt.show()
+        
+        plt.clf()
+        plt.title("Jacobi")
+        plt.xlabel("yr")
+        plt.ylabel("AU^2 yr^-2")
+        plt.plot(self.Time,self.Jacobi,label="Jacobi Integral")
+        plt.legend(loc="best")
+        plt.show()
+        
+        plt.clf()
+        plt.title("Distance Between Stars")
+        plt.xlabel("yr")
+        plt.ylabel("AU")
+        plt.plot(self.Time,self.Distance,label="r")
         plt.legend(loc="best")
         plt.show()
         
