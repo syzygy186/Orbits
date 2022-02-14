@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import math
 import matplotlib.pyplot as plt
 import numpy as np 
@@ -43,7 +45,7 @@ class Vector:
     # Multiplication by Scalar
     @__mul__.register(float)
     def _(self,other):
-        return Vector(self.x*other,self.y*other,self.z*other)
+        return Vector(other*self.x,other*self.y,other*self.z)
     
     # Reversed Inner Product
     @functools.singledispatchmethod
@@ -191,8 +193,7 @@ class QSimulator:
         # Time Evolution
         for Particle in self.Particles:
             Particle.Evolve(dt,self.Omega)
-        
-        
+              
 class Simulator:
     
     '''
@@ -248,6 +249,7 @@ class Simulator:
             ICM += (Particle.Pos*Particle.Pos)*Particle.Mas
             L    = L + Particle.Mas * (Particle.Pos @ Particle.Vel)
         self.Omega = (1.0/ICM)*L
+        self.GoToLab()
     
     # Goes to Synodic, but Dynamics in the Synodic are unstable
     def GoToSynodic(self):
@@ -384,5 +386,114 @@ class Simulator:
         plt.xlabel("yr")
         plt.ylabel("MSun AU^2 yr^-1")
         plt.plot(self.Time,self.Angular,label="Lz")
+        plt.legend(loc="best")
+        plt.show()
+
+class StaticParticle:
+    def __init__(self,Name,Mass,Position,Velocity):
+        self.Nam = Name
+        self.Mas = Mass
+        self.Pos = Position
+        self.Vel = Velocity
+        self.Tra = [[],[],[]]
+    
+    def Evolve(self,dt):
+        
+        # Euler's Method for Time Evolution
+        self.Vel = self.Vel + self.Acc * dt
+        self.Pos = self.Pos + self.Vel * dt
+        
+        # Record the Trajectory
+        self.Tra[0].append(self.Pos.x)
+        self.Tra[1].append(self.Pos.y)
+        self.Tra[2].append(self.Pos.z)
+
+class StaticSimulator:
+
+    ''' 
+        Every particle has an internal clock and Static Simulator synchronizes them.
+        Calculate collective properties
+
+    '''
+
+    def __init__(self, particles, forceField = [lambda t,position : -(G*position.x/math.pow(position.x**2+position.y**2+position.z**2,1.5)),
+                                                lambda t,position : -(G*position.y/math.pow(position.x**2+position.y**2+position.z**2,1.5)),
+                                                lambda t,position : -(G*position.z/math.pow(position.x**2+position.y**2+position.z**2,1.5))]):
+        self.forceField = forceField
+        self.Particles = particles
+
+    def SimulateEuler(self,Time,Steps):
+        
+        t = 0
+        dt = Time/Steps
+        
+        while t < Time: 
+           
+            # Time Evolution
+            # d/dt v = fx(t,x,y,z)
+            # d/dt x = v(t)
+            
+            t += dt
+
+            for Particle in self.Particles:
+                Force = Vector(self.forceField[0](t,Particle.Pos),self.forceField[1](t,Particle.Pos),self.forceField[2](t,Particle.Pos))
+                Particle.Vel += dt*Force
+                Particle.Pos += dt*Particle.Vel
+                Particle.Tra[0].append(Particle.Pos.x)
+                Particle.Tra[1].append(Particle.Pos.y)
+                Particle.Tra[2].append(Particle.Pos.z)
+        
+    def SimulateRungeKutta(self,Time,Steps):
+        t = 0
+        dt = Time/Steps
+        
+        while t < Time: 
+           
+            # Time Evolution
+            # d/dt v = fx(t,x,y,z) RK4 
+            # d/dt x = v(t)        EULER
+            
+            t += dt
+
+            for Particle in self.Particles:
+                
+                # k1: t,x
+                # k2: t+dt/2, x + dt*k1/2
+                # k3: t+dt/2, x + dt*k2/2
+                # k4: t+dt  , x + dt*k3
+
+                k1  = Vector(self.forceField[0](t,Particle.Pos),self.forceField[1](t,Particle.Pos),self.forceField[2](t,Particle.Pos))
+                vk1 = (dt/2)*k1
+                xk1 = Particle.Pos + (dt/2)*vk1
+
+                k2  = Vector(self.forceField[0](t+dt/2,xk1),self.forceField[1](t+dt/2,xk1),self.forceField[2](t+dt/2,xk1))
+                vk2 = (dt/2)*k2
+                xk2 = Particle.Pos + (dt/2)*vk2
+
+                k3  = Vector(self.forceField[0](t+dt/2,xk2),self.forceField[1](t+dt/2,xk2),self.forceField[2](t+dt/2,xk2))
+                vk3 = (dt/2)*k3
+                xk3 = Particle.Pos + (dt/2)*vk3
+                
+                k4  = Vector(self.forceField[0](t+dt,xk3),self.forceField[1](t+dt,xk3),self.forceField[2](t+dt,xk3))
+                vk4 = (dt)*k4
+                xk4 = Particle.Pos + (dt)*vk4
+
+                
+                Acceleration  = (k1+k2+k2+k3+k3+k4)
+                Particle.Vel += (dt/6.)*Acceleration
+
+                # Fixed to Euler
+                Particle.Pos += dt*Particle.Vel
+                Particle.Tra[0].append(Particle.Pos.x)
+                Particle.Tra[1].append(Particle.Pos.y)
+                Particle.Tra[2].append(Particle.Pos.z)
+
+    def GeneratePlots(self):
+        plt.clf()
+        plt.title("Orbits")
+        plt.xlabel("AU")
+        plt.ylabel("AU")
+        for Particle in self.Particles:
+            plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
         plt.legend(loc="best")
         plt.show()
