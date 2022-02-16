@@ -1,17 +1,15 @@
-#!/usr/bin/env python3
 
-import math
+import math, os
 import matplotlib.pyplot as plt
 import numpy as np 
 import functools
+from Video import *
 
 G = 4*np.pi**2
 
 # Time is measured in years
 # Distance is Measured in AU
 # Mass is measured in MSun
-
-
 
 class Vector:
 
@@ -74,18 +72,17 @@ class Particle:
     
     '''
     
-    # Define a Partile: Name, Mass, Position and Velocity are Required, Acceleration is optional
-    def __init__(self,Name,Mass,Position,Velocity,Acceleration=Vector(0,0,0)):
+    def __init__(self,Name,Mass,Position,Velocity,Color):
         self.Nam = Name
         self.Mas = Mass
         self.Pos = Position
         self.Vel = Velocity
-        self.Acc = Acceleration
+        self.Acc = Vector(0.,0.,0.)
+        self.Col = Color
         self.Tra = [[],[],[]]
     
-    def Evolve(self,dt,Omega=Vector(0,0,0)):
+    def Evolve(self,dt,Omega=Vector(0.,0.,0.)):
         
-        # Euler's Method for Time Evolution
         self.Vel = self.Vel + self.Acc * dt
         self.Pos = self.Pos + self.Vel * dt
         
@@ -93,107 +90,7 @@ class Particle:
         self.Tra[0].append(self.Pos.x)
         self.Tra[1].append(self.Pos.y)
         self.Tra[2].append(self.Pos.z)
-
-class QParticle: 
     
-    '''
-    Clone of Particle but faster because Trajectories are not stored
-    '''
-    
-    def __init__(self,Name,Mass,Position,Velocity,Acceleration=Vector(0,0,0)):
-        self.Nam = Name
-        self.Mas = Mass
-        self.Pos = Position
-        self.Vel = Velocity
-        self.Acc = Acceleration
-    
-    def Evolve(self,dt,Omega=Vector(0,0,0)):
-        
-        # Euler's Method for Time Evolution
-        self.Vel = self.Vel + self.Acc * dt
-        self.Pos = self.Pos + self.Vel * dt
-        
-    def __str__(self):
-        return self.Nam + " Position " + str(self.Pos)
-            
-class QSimulator:           
-    def __init__(self,Particles,Omega=Vector(0,0,0)):
-        self.Omega     = Omega
-        self.Velocity  = Vector(0,0,0)
-        self.Particles = Particles
-    
-    def GoToCM(self):
-        R = Vector(0,0,0)
-        P = Vector(0,0,0)
-        M = 0
-        for Particle in self.Particles:
-            R = R + Particle.Mas*Particle.Pos
-            P = P + Particle.Mas*Particle.Vel
-            M = M + Particle.Mas
-        
-        self.Velocity = (1.0/M)*P
-        self.Position = (1.0/M)*R
-        
-        for Particle in self.Particles:
-            Particle.Vel = Particle.Vel - self.Velocity
-            Particle.Pos = Particle.Pos - self.Position
-    
-    def GoToLab(self):
-        for Particle in self.Particles:
-            Particle.Vel = Particle.Vel + self.Velocity
-    
-    def GoToSynodic(self):
-        
-        self.GoToCM()
-        ICM = 0
-        L = Vector(0,0,0)
-        for Particle in self.Particles:
-            ICM += (Particle.Pos*Particle.Pos)*Particle.Mas
-            L    = L + Particle.Mas * (Particle.Pos @ Particle.Vel)
-        self.Omega = (1.0/ICM)*L
-        
-        for Particle in self.Particles:
-            Particle.Vel = Particle.Vel - self.Omega @ Particle.Pos
-        
-        print("ICM : ",ICM)
-        print("The Anagular Velocity of the Synodic system is:",self.Omega)
-    
-    def SetOmega(self,Omega):
-        self.Omega = Omega
-        for Particle in self.Particles:
-            Particle.Vel = Particle.Vel - self.Omega @ Particle.Pos
-    
-    def Simulate(self,dt):
-          
-        # Interactions
-        
-        for i, Particle1 in enumerate(self.Particles):
-            
-            Particle1.Acc = Vector(0,0,0)
-                
-            # Coriolis Acceleration
-            Particle1.Acc = Particle1.Acc - 2.0*(self.Omega @ Particle1.Vel)
-                
-            # Centrifugal Acceleration
-            Particle1.Acc = Particle1.Acc - self.Omega @ (self.Omega @ Particle1.Pos)
-                
-                            
-            for j, Particle2 in enumerate(self.Particles):
-                if i == j: 
-                    continue
-                    
-                g = G*Particle2.Mas
-                r = Particle2.Pos - Particle1.Pos
-                r3 = pow(r*r,1.5)
-            
-                Particle1.Acc.x += g*r.x/r3
-                Particle1.Acc.y += g*r.y/r3
-                Particle1.Acc.z += g*r.z/r3
-                           
-        # Time Evolution
-        for Particle in self.Particles:
-            Particle.Evolve(dt,self.Omega)
-              
 class Simulator:
     
     '''
@@ -203,6 +100,7 @@ class Simulator:
     '''
     
     # Define a Simulator only needs particles, optionally a rotational frquency
+
     def __init__(self,Particles,Omega=Vector(0,0,0)):
         self.Omega     = Omega
         self.Velocity  = Vector(0,0,0)
@@ -214,6 +112,7 @@ class Simulator:
         self.Kinetic   = []
         self.Jacobi    = []
         self.Distance  = []
+        self.Theta     = []
     
     # Go to the Center of mass
     def GoToCM(self):
@@ -237,8 +136,7 @@ class Simulator:
         for Particle in self.Particles:
             Particle.Vel = Particle.Vel + self.Velocity
             Particle.Pos = Particle.Pos + self.Position
-    
-    
+        
     def ComputeOmega(self):
         
         # L = ICM * Omega
@@ -289,7 +187,7 @@ class Simulator:
             J  = 0
         
             # Interactions
-            
+
             if len(self.Particles)>=2:
                 D  = self.Particles[0].Pos - self.Particles[1].Pos
                 D  = np.sqrt(D*D)
@@ -344,8 +242,9 @@ class Simulator:
             self.Angular.append(lz)
             self.Jacobi.append(J)
             self.Distance.append(D)
-    
-    def GeneratePlots(self):
+
+    def GeneratePlots(self,mode="Show"):
+        
         plt.clf()
         plt.title("Orbits")
         plt.xlabel("AU")
@@ -353,17 +252,23 @@ class Simulator:
         for Particle in self.Particles:
             plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
         plt.legend(loc="best")
-        plt.show()
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Orbits.png")
         
         plt.clf()
         plt.title("Energies")
         plt.xlabel("yr")
         plt.ylabel("MSun AU^2 yr^-2")
         plt.plot(self.Time,self.Energy,label="Total Energy")
-        #plt.plot(self.Time,self.Potential,label="Potential Energy")
-        #plt.plot(self.Time,self.Kinetic,label="Kinetic Energy")
+        plt.plot(self.Time,self.Potential,label="Potential Energy")
+        plt.plot(self.Time,self.Kinetic,label="Kinetic Energy")
         plt.legend(loc="best")
-        plt.show()
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Energies.png")
         
         plt.clf()
         plt.title("Jacobi")
@@ -371,7 +276,10 @@ class Simulator:
         plt.ylabel("AU^2 yr^-2")
         plt.plot(self.Time,self.Jacobi,label="Jacobi Integral")
         plt.legend(loc="best")
-        plt.show()
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Jacobi.png")
         
         plt.clf()
         plt.title("Distance Between Stars")
@@ -379,7 +287,10 @@ class Simulator:
         plt.ylabel("AU")
         plt.plot(self.Time,self.Distance,label="r")
         plt.legend(loc="best")
-        plt.show()
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Distace between Satrs.png")
         
         plt.clf()
         plt.title("Angular Momentum")
@@ -387,26 +298,53 @@ class Simulator:
         plt.ylabel("MSun AU^2 yr^-1")
         plt.plot(self.Time,self.Angular,label="Lz")
         plt.legend(loc="best")
-        plt.show()
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Total Angular Momentum.png")
 
-class StaticParticle:
-    def __init__(self,Name,Mass,Position,Velocity):
-        self.Nam = Name
-        self.Mas = Mass
-        self.Pos = Position
-        self.Vel = Velocity
-        self.Tra = [[],[],[]]
+    def GenerateVideo(self,Name):
+        VG = VideoGenerator(Name,self.Particles)
+        VG.Generate()
+
+class Tracker:
+   
+    '''
+        Kimenatical Tracker
+
+    '''
+
+    def __init__(self,Title,XTitle,YTitle,XUnits,YUnits):
+        
+        self.Title    = Name
+        self.Lambda  = Lambda
+        
+        self.XTitle  = XTitle
+        self.XUnits  = XUnits
+        self.XAxis   = []
+        
+        self.YTitle  = YTitle
+        self.YUnits  = YUnits
+        self.YAxis   = []
     
-    def Evolve(self,dt):
-        
-        # Euler's Method for Time Evolution
-        self.Vel = self.Vel + self.Acc * dt
-        self.Pos = self.Pos + self.Vel * dt
-        
-        # Record the Trajectory
-        self.Tra[0].append(self.Pos.x)
-        self.Tra[1].append(self.Pos.y)
-        self.Tra[2].append(self.Pos.z)
+    def AddPoint(self,X,Y):
+        XAxis.append(X)
+        YAxis.append(Y)
+
+    def GeneratePlot(self,Mode="Save"):
+        plt.clf()
+        plt.title(self.Name)
+        plt.xlabel(self.XTitle+" ("+self.XUnits+")")
+        plt.xlabel(self.YTitle+" ("+self.YUnits+")")
+        for Particle in self.Particles:
+            plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
+        plt.legend(loc="best")
+        if(Mode=="Show"):
+            plt.show()
+        elif (Mode=="Save"):
+            plt.savefig("Distace between Satrs.png")
+        else:
+            print("Error: Unrecognized tracker plot generator mode:",Mode)
 
 class StaticSimulator:
 
@@ -420,7 +358,15 @@ class StaticSimulator:
                                                 lambda t,position : -(G*position.y/math.pow(position.x**2+position.y**2+position.z**2,1.5)),
                                                 lambda t,position : -(G*position.z/math.pow(position.x**2+position.y**2+position.z**2,1.5))]):
         self.forceField = forceField
-        self.Particles = particles
+        self.Particles  = particles
+
+    def Simulate(self,Time,Steps,Method):
+        if (Method=="Euler"):
+            self.SimulateEuler(Time,Steps)
+        elif(Method=="RK4"):
+            self.SimulateRK4(Time,Steps)
+        else:
+            print("Error: Method",Method,"not recognized")
 
     def SimulateEuler(self,Time,Steps):
         
@@ -429,39 +375,22 @@ class StaticSimulator:
         
         while t < Time: 
            
-            # Time Evolution
-            # d/dt v = fx(t,x,y,z)
-            # d/dt x = v(t)
-            
             t += dt
 
             for Particle in self.Particles:
-                Force = Vector(self.forceField[0](t,Particle.Pos),self.forceField[1](t,Particle.Pos),self.forceField[2](t,Particle.Pos))
-                Particle.Vel += dt*Force
-                Particle.Pos += dt*Particle.Vel
-                Particle.Tra[0].append(Particle.Pos.x)
-                Particle.Tra[1].append(Particle.Pos.y)
-                Particle.Tra[2].append(Particle.Pos.z)
-        
-    def SimulateRungeKutta(self,Time,Steps):
+                Particle.Acc = Vector(self.forceField[0](t,Particle.Pos),self.forceField[1](t,Particle.Pos),self.forceField[2](t,Particle.Pos))
+                Particle.Evolve()
+
+    def SimulateRK4(self,Time,Steps):
         t = 0
         dt = Time/Steps
         
         while t < Time: 
            
-            # Time Evolution
-            # d/dt v = fx(t,x,y,z) RK4 
-            # d/dt x = v(t)        EULER
-            
             t += dt
 
             for Particle in self.Particles:
                 
-                # k1: t,x
-                # k2: t+dt/2, x + dt*k1/2
-                # k3: t+dt/2, x + dt*k2/2
-                # k4: t+dt  , x + dt*k3
-
                 k1  = Vector(self.forceField[0](t,Particle.Pos),self.forceField[1](t,Particle.Pos),self.forceField[2](t,Particle.Pos))
                 vk1 = (dt/2)*k1
                 xk1 = Particle.Pos + (dt/2)*vk1
@@ -477,18 +406,13 @@ class StaticSimulator:
                 k4  = Vector(self.forceField[0](t+dt,xk3),self.forceField[1](t+dt,xk3),self.forceField[2](t+dt,xk3))
                 vk4 = (dt)*k4
                 xk4 = Particle.Pos + (dt)*vk4
-
                 
-                Acceleration  = (k1+k2+k2+k3+k3+k4)
-                Particle.Vel += (dt/6.)*Acceleration
+                Acceleration  = (k1+k2+k2+k3+k3+k4)/6.
+                Particle.Acc  = Acceleration
 
-                # Fixed to Euler
-                Particle.Pos += dt*Particle.Vel
-                Particle.Tra[0].append(Particle.Pos.x)
-                Particle.Tra[1].append(Particle.Pos.y)
-                Particle.Tra[2].append(Particle.Pos.z)
+                Particle.Evolve()
 
-    def GeneratePlots(self):
+    def GeneratePlots(self,mode="Save"):
         plt.clf()
         plt.title("Orbits")
         plt.xlabel("AU")
@@ -496,4 +420,286 @@ class StaticSimulator:
         for Particle in self.Particles:
             plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
         plt.legend(loc="best")
-        plt.show()
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Orbits.png")
+
+    def GetRanges(self): 
+        xMin = 1E38
+        xMax = -1E38
+        yMin = 1E38
+        yMax = -1E38
+        for iFrame in range(len(self.Particles[0].Tra[0])):
+            for particle in self.Particles:
+                xMin = min(particle.Tra[0][iFrame],xMin)
+                xMax = max(particle.Tra[0][iFrame],xMax)
+                yMin = min(particle.Tra[1][iFrame],yMin)
+                yMax = max(particle.Tra[1][iFrame],yMax)
+        return [xMin,xMax] , [yMin,yMax]
+
+class FunctionalVector:
+
+    def __init__(self,fx,fy,fz):
+        self.fx = fx
+        self.fy = fy
+        self.fz = fz
+
+    def __call__(self,fourvector):
+        return Vector(fx(fourvector),fy(fourvector),fz(fourvector))
+
+class BinaryStarSimulator:
+    
+    '''
+    
+        Dedicated Simulator for Binary Systems
+    
+    '''
+    
+    # Define a Simulator only needs particles, optionally a rotational frquency
+
+    def __init__(self,Star1,Star2,Planets):
+        self.Velocity  = Vector(0,0,0)
+        self.Omega     = Vector(0,0,0)
+        self.Stars     = [Star1,Star2]
+        self.Particles = Planets
+    
+    # Go to the Center of mass
+    def GoToCM(self):
+        R = Vector(0,0,0)
+        P = Vector(0,0,0)
+        M = 0
+        for Particle in self.Particles:
+            R = R + Particle.Mas*Particle.Pos
+            P = P + Particle.Mas*Particle.Vel
+            M = M + Particle.Mas
+        
+        self.Velocity = (1.0/M)*P
+        self.Position = (1.0/M)*R
+        
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Velocity
+            Particle.Pos = Particle.Pos - self.Position
+    
+    # Go back to the system where things were defined
+    def GoToLab(self):
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel + self.Velocity
+            Particle.Pos = Particle.Pos + self.Position
+        
+    def ComputeOmega(self):
+        
+        # L = ICM * Omega
+        self.GoToCM()
+        ICM = 0
+        L = Vector(0,0,0)
+        for Particle in self.Particles:
+            ICM += (Particle.Pos*Particle.Pos)*Particle.Mas
+            L    = L + Particle.Mas * (Particle.Pos @ Particle.Vel)
+        self.Omega = (1.0/ICM)*L
+        self.GoToLab()
+    
+    # Goes to Synodic, but Dynamics in the Synodic are unstable
+    def GoToSynodic(self):
+        
+        self.GoToCM()
+        ICM = 0
+        L = Vector(0,0,0)
+        for Particle in self.Particles:
+            ICM += (Particle.Pos*Particle.Pos)*Particle.Mas
+            L    = L + Particle.Mas * (Particle.Pos @ Particle.Vel)
+        self.Omega = (1.0/ICM)*L
+        
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Omega @ Particle.Pos
+        
+        print("ICM : ",ICM)
+        print("The Anagular Velocity of the Synodic system is:",self.Omega)
+    
+    # Do not use, only for debug
+    def SetOmega(self,Omega):
+        self.Omega = Omega
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Omega @ Particle.Pos
+    
+    def Simulate(self,Time,Steps):
+        
+        t = 0
+        dt = Time/Steps
+        
+        while t < Time: 
+            t += dt
+            
+
+            # Compute Sun - Sun Interactions
+            for i, Star1 in enumerate(self.Stars):
+                for j, Star2 in enumerate(self.Stars):
+                    if i == j: 
+                        continue
+                    
+                    g = G*Star2.Mas
+                    r = Star2.Pos - Star1.Pos
+                    r3 = pow(r*r,1.5)
+            
+                    Star1.Acc.x += g*r.x/r3
+                    Star1.Acc.y += g*r.y/r3
+                    Star1.Acc.z += g*r.z/r3
+           
+            # Time Evolution
+            for Star in self.Stars:
+                Star.Evolve(dt,self.Omega)
+
+            for Planet in enumerate(self.Planets):
+                Planet.Acc = Vector(0,0,0)
+                for Star in enumerate(self.Stars):
+                    g = G*Planet2.Mas
+                    r = Planet2.Pos - Particle1.Pos
+                    r3 = pow(r*r,1.5)
+             
+                    Planet1.Acc.x += (g/r3)*r
+
+
+
+            # Time Evolution
+        
+            for Planet in self.Planets:
+                Planet.Evolve(dt,self.Omega)
+    
+    def GetRanges(self): 
+        xMin = 1E38
+        xMax = -1E38
+        yMin = 1E38
+        yMax = -1E38
+        for iFrame in range(len(self.Particles[0].Tra[0])):
+            for particle in self.Particles:
+                xMin = min(particle.Tra[0][iFrame],xMin)
+                xMax = max(particle.Tra[0][iFrame],xMax)
+                yMin = min(particle.Tra[1][iFrame],yMin)
+                yMax = max(particle.Tra[1][iFrame],yMax)
+        return [xMin,xMax] , [yMin,yMax] 
+
+    def GeneratePlots(self,mode="Show"):
+        
+        plt.clf()
+        plt.title("Orbits")
+        plt.xlabel("AU")
+        plt.ylabel("AU")
+        for Particle in self.Particles:
+            plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
+        plt.legend(loc="best")
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Orbits.png")
+        
+        plt.clf()
+        plt.title("Energies")
+        plt.xlabel("yr")
+        plt.ylabel("MSun AU^2 yr^-2")
+        plt.plot(self.Time,self.Energy,label="Total Energy")
+        plt.plot(self.Time,self.Potential,label="Potential Energy")
+        plt.plot(self.Time,self.Kinetic,label="Kinetic Energy")
+        plt.legend(loc="best")
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Energies.png")
+        
+        plt.clf()
+        plt.title("Jacobi")
+        plt.xlabel("yr")
+        plt.ylabel("AU^2 yr^-2")
+        plt.plot(self.Time,self.Jacobi,label="Jacobi Integral")
+        plt.legend(loc="best")
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Jacobi.png")
+        
+        plt.clf()
+        plt.title("Distance Between Stars")
+        plt.xlabel("yr")
+        plt.ylabel("AU")
+        plt.plot(self.Time,self.Distance,label="r")
+        plt.legend(loc="best")
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Distace between Satrs.png")
+        
+        plt.clf()
+        plt.title("Angular Momentum")
+        plt.xlabel("yr")
+        plt.ylabel("MSun AU^2 yr^-1")
+        plt.plot(self.Time,self.Angular,label="Lz")
+        plt.legend(loc="best")
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Total Angular Momentum.png")
+
+    def GenerateVideo(self):
+        
+        '''
+            Video Parameters -> Soon it'll be a class VideoGenerator
+        '''
+
+        width   = 2000
+        height  = 2000
+        channel = 3
+        Padding = 0.05
+        fps     = 30 
+        xRange , yRange = self.GetRanges()
+
+        xRange[0] -= Padding*(xRange[1]-xRange[0])
+        xRange[1] += Padding*(xRange[1]-xRange[0])
+        yRange[0] -= Padding*(yRange[1]-yRange[0])
+        yRange[1] += Padding*(yRange[1]-yRange[0])
+
+        def GetPixel(X,Y):
+            x = int((width *float(X - xRange[0]))/(xRange[1]-xRange[0])//1)
+            y = int((height*float(Y - yRange[0]))/(yRange[1]-yRange[0])//1)
+            return x,y
+
+
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video = cv2.VideoWriter('test.mp4', fourcc, float(fps), (width, height))
+    
+        for frame_count in range(len(self.Particles[0].Tra[0])):
+            frame = np.zeros((height,width,3), dtype=np.uint8)
+            for particle in self.Particles:
+                x,y = GetPixel(particle.Tra[0][frame_count],particle.Tra[1][frame_count])
+                for xC in range(4):
+                    for yC in range(4):
+                        frame[height-(y+yC-2)][width-(x+xC-2)][0] = particle.Col[0]
+                        frame[height-(y+yC-2)][width-(x+xC-2)][1] = particle.Col[1]
+                        frame[height-(y+yC-2)][width-(x+xC-2)][2] = particle.Col[2]
+            video.write(frame)
+ 
+        video.release()
+
+class ForceFieldGenerator:
+
+    def __init__(self,Particles):
+        self.Particles = Particles
+     
+    def GravitationalForce(self,r):
+
+
+           return (-G/pow(r*r,1.5))*r
+    
+    def Evolve(self,dt):
+        for i,Particle1 in enumerate(self.Particles):
+            for j,Particle2 in enumerate(self.Particles):
+                if i == j:
+                    continue
+                r  = Particle2.Pos - Particle1.Pos
+                Particle1.Acc = self.GravitationalForce(r)
+            Particle1.Evolve(dt)
+
+    def __call__(self,Position):
+        TotalForce = Vector(0,0,0)
+        for i,Particle1 in enumerate(self.Particles):
+            r = Position - Particle1.Pos
+            TotalForce = TotalForce + self.GravitationalForce(r)
+        return TotalForce
