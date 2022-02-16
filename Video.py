@@ -11,8 +11,7 @@ class VideoGenerator:
         self.Height     = 2000
         self.Channels   = 3
         self.framerate  = 30
-        self.Padding    = 0.05 
-        # self.Settings  = Settings
+        self.Padding    = 0.05
     
     def GetRanges(self): 
         xMin = self.Particles[0].Tra[0][0]
@@ -43,12 +42,11 @@ class VideoGenerator:
 
 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        video = cv2.VideoWriter(self.Name+".mp4", fourcc, float(self.framerate), (self.Width, self.Height))
+        video  = cv2.VideoWriter(self.Name+".mp4", fourcc, float(self.framerate), (self.Width, self.Height))
     
         num_frames = len(self.Particles[0].Tra[0])
 
-        
-        sys.stdout.write("Generating Video for: "+self.Name+"\n")        
+        print("Generating Video for:",self.Name)        
         for frame_count in range(num_frames):
 
             sys.stdout.write('\r')
@@ -61,8 +59,8 @@ class VideoGenerator:
                 for xC in range(4):
                     for yC in range(4):
                         for rbg in range(self.Channels):
-                            frame[self.Height-(y+yC-2)][self.Width-(x+xC-2)][rbg] = particle.Col[rbg]
+                            frame[self.Height-(y+yC-2)][(x+xC-2)][rbg] = particle.Col[rbg]
             video.write(frame)
-        sys.stdout.write("Video generation completed\n")
+        print()
  
         video.release()
