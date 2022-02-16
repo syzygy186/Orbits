@@ -1,5 +1,5 @@
 
-import random
+import numpy as np
 
 def Random(Low,Upp):
     return Low + (Upp-Low)*np.random.random()
