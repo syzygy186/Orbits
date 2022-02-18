@@ -101,6 +101,8 @@ class Simulator:
     '''
     
     Deals with Time management and Interactions
+    Democratic treatment of all particles
+
     
     '''
     
@@ -312,6 +314,259 @@ class Simulator:
         VG = VideoGenerator(Name,self.Particles)
         VG.Generate()
 
+class StaticSimulator:
+
+    ''' 
+        
+        There are two kinds of particles: Sources and Particles
+
+            Sources are used to generate force fields 
+            Particles eveolve in the generated potential interction-free
+
+    '''
+
+    def __init__(self, particles, forceField):
+        self.Methods = {"Euler":self.SimulateEuler,"RK4":self.SimulateRK4}
+        self.forceField = forceField
+        self.Particles  = particles
+
+    def GoToCM(self):
+
+        '''
+            Shifts into the Center of mass of the Sources and then 
+            sifhts all particles into this frame
+        '''
+
+        self.forceField.GoToCM()
+        self.Position = self.forceField.Position
+        self.Velocity = self.forceField.Velocity
+        for Particle in self.Particles:
+            Particle.Pos = Particle.Pos - self.Position
+            Particle.Vel = Particle.Vel - self.Velocity
+
+    def Simulate(self,Time,Steps,Method):
+
+        '''
+            Top Level Simulator Selector
+        '''
+
+        self.Methods[Method](Time,Steps)
+
+    def SimulateEuler(self,Time,Steps):
+
+        '''
+            Simualtion using Euler's Method for the evolution of the 
+            Particles in the force field
+
+        '''
+        
+        t = 0
+        dt = Time/Steps
+        
+        while t < Time: 
+           
+            t += dt
+            self.forceField.Evolve(dt)
+
+            for Particle in self.Particles:
+                Particle.Acc = self.forceField(Particle.Pos)
+                Particle.Evolve(dt)
+
+    def SimulateRK4(self,Time,Steps):
+
+        '''
+            Simualtion using Runge-Kutta of fourth degree for the evolution 
+            of the particles in the force field
+            Arguments:
+
+                Time  : Time in Years to be Simulated
+                Steps : Number of Steps to be used to reach the endpoint time
+
+        '''
+
+        t = 0
+        dt = Time/Steps
+        
+        while t < Time: 
+           
+            t += dt
+
+            for Particle in self.Particles:
+                
+                k1  = self.forceField(Particle.Pos)
+                vk1 = (dt/2)*k1
+                xk1 = Particle.Pos + (dt/2)*vk1
+
+                # Here we step on the Force Field but delete the track 
+                # to keep the trajectories of sources and particles of equal length
+
+                self.forceField.Evolve(dt/2)
+                self.forceField.RemoveLastTrack()
+
+                k2  = self.forceField(xk1)
+                vk2 = (dt/2)*k2
+                xk2 = Particle.Pos + (dt/2)*vk2
+
+                k3  = self.forceField(xk2)
+                vk3 = (dt/2)*k3
+                xk3 = Particle.Pos + (dt/2)*vk3
+                
+                # Second step on the Force Field, now we keep the track
+
+                self.forceField.Evolve(dt/2)
+
+                k4  = self.forceField(xk3)
+                vk4 = (dt)*k4
+                xk4 = Particle.Pos + (dt)*vk4
+                
+                Acceleration  = (1./6.)*(k1+(2.*k2)+(2.*k3)+k4)
+                Particle.Acc  = Acceleration
+
+                Particle.Evolve(dt)
+
+    def GeneratePlots(self,mode="Save"):
+        plt.clf()
+        plt.title("Orbits")
+        plt.xlabel("AU")
+        plt.ylabel("AU")
+        for Particle in self.Particles:
+            plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
+        plt.legend(loc="best")
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Orbits.png")
+
+        self.forceField.GeneratePlots(mode)
+
+    def GenerateVideo(self,Name):
+        VG = VideoGenerator(Name,self.Particles)
+        VG.Generate()
+
+class ForceFieldGenerator:
+
+    '''
+        Holds a set of particles to be used to generate a 
+        potential that can be used by a Simulator as a 
+        Force Field Source
+
+            Holds:
+                Particles : All sorces which evolve through Gravitational Forces 
+
+    '''
+
+    def __init__(self,Particles,force = lambda r : (G/pow(r*r,1.5))*r):
+        self.Methods = {"Euler":self.EvolveEuler, "RK4":self.EvolveRK4}
+        self.Particles = Particles
+        self.Force     = force
+        
+    def GravitationalForce(self,r):
+
+        '''
+           Wrwapper to be able to modify the underlying force field
+
+        '''
+
+        return self.Force(r)
+    
+    def RemoveLastTrack(self):
+
+        '''
+            Recursively remove last track from all undelying particles
+        '''
+
+        for Particle in self.Particles:
+            Particle.RemoveLastTrack()
+
+    def GoToCM(self):
+
+        '''
+            Shift to the Center of Mass System
+            Here rCM = 0 and (d/dt)rCM = 0
+
+            We store the transformation values to be able to go back
+
+        '''
+
+        R = Vector(0,0,0)
+        P = Vector(0,0,0)
+        M = 0
+        for Particle in self.Particles:
+            R = R + Particle.Mas*Particle.Pos
+            P = P + Particle.Mas*Particle.Vel
+            M = M + Particle.Mas
+        
+        self.Velocity = (1.0/M)*P
+        self.Position = (1.0/M)*R
+        
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Velocity
+            Particle.Pos = Particle.Pos - self.Position
+
+    def GeneratePlots(self,mode="Save"):
+        plt.clf()
+        plt.title("Force Field Orbits")
+        plt.xlabel("AU")
+        plt.ylabel("AU")
+        for Particle in self.Particles:
+            plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
+        plt.legend(loc="best")
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig("Force Field Orbits.png")
+
+    def Evolve(self,dt,Method="RK4"):
+        self.Methods[Method](dt)
+
+    def EvolveRK4(self,dt):
+            for i,Particle1 in enumerate(self.Particles):
+                Particle1.Acc = Vector(0,0,0)
+                for j,Particle2 in enumerate(self.Particles):
+                    if i == j:
+                        continue
+                    r  = Particle2.Pos - Particle1.Pos
+    
+                    k1  = self.GravitationalForce(r)
+                    vk1 = (dt/2)*k1
+                    xk1 = r + (dt/2)*vk1
+    
+                    k2  = self.GravitationalForce(xk1)
+                    vk2 = (dt/2)*k2
+                    xk2 = r + (dt/2)*vk2
+    
+                    k3  = self.GravitationalForce(xk2)
+                    vk3 = (dt/2)*k3
+                    xk3 = r + (dt/2)*vk3
+                    
+                    k4  = self.GravitationalForce(xk3)
+                    vk4 = (dt)*k4
+                    xk4 = r + (dt)*vk4
+                    
+                    Acceleration  = (1./6.)*(k1+(2.*k2)+(2.*k3)+k4)
+                    Particle1.Acc  = Particle1.Acc + Acceleration 
+
+                Particle1.Evolve(dt)
+
+    def EvolveEuler(self,dt):
+        for i,Particle1 in enumerate(self.Particles):
+            Acceleration = Vector(0,0,0)
+            for j,Particle2 in enumerate(self.Particles):
+                if i == j:
+                    continue
+                r  = Particle2.Pos - Particle1.Pos
+                Acceleration = Acceleration + Particle2.Mas*self.GravitationalForce(r)
+            Particle1.Acc = Acceleration
+            Particle1.Evolve(dt)
+
+    def __call__(self,Position):
+        TotalForce = Vector(0,0,0)
+        for i,Particle1 in enumerate(self.Particles):
+            r = Particle1.Pos - Position
+            TotalForce = TotalForce + Particle1.Mas*self.GravitationalForce(r)
+        return TotalForce
+
+# Currently Unused
 class Tracker:
    
     '''
@@ -350,167 +605,3 @@ class Tracker:
             plt.savefig("Distace between Satrs.png")
         else:
             print("Error: Unrecognized tracker plot generator mode:",Mode)
-
-class StaticSimulator:
-
-    ''' 
-        Every particle has an internal clock and Static Simulator synchronizes them.
-        Calculate collective properties
-
-    '''
-
-    def __init__(self, particles, forceField):
-        self.forceField = forceField
-        self.Particles  = particles
-
-    def GoToCM(self):
-        self.forceField.GoToCM()
-        self.Position = self.forceField.Position
-        self.Velocity = self.forceField.Velocity
-        for Particle in self.Particles:
-            Particle.Pos = Particle.Pos - self.Position
-            Particle.Vel = Particle.Vel - self.Velocity
-
-    def Simulate(self,Time,Steps,Method):
-        if (Method=="Euler"):
-            self.SimulateEuler(Time,Steps)
-        elif(Method=="RK4"):
-            self.SimulateRK4(Time,Steps)
-        else:
-            print("Error: Method",Method,"not recognized")
-
-    def SimulateEuler(self,Time,Steps):
-        
-        t = 0
-        dt = Time/Steps
-        
-        while t < Time: 
-           
-            t += dt
-            self.forceField.Evolve(dt)
-
-            for Particle in self.Particles:
-                Particle.Acc = self.forceField(Particle.Pos)
-                Particle.Evolve(dt)
-
-    def SimulateRK4(self,Time,Steps):
-        t = 0
-        dt = Time/Steps
-        
-        while t < Time: 
-           
-            t += dt
-            # self.forceField.Evolve(dt)
-
-            for Particle in self.Particles:
-                
-                k1  = self.forceField(Particle.Pos)
-                vk1 = (dt/2)*k1
-                xk1 = Particle.Pos + (dt/2)*vk1
-
-                self.forceField.Evolve(dt/2)
-                self.forceField.RemoveLastTrack()
-
-                k2  = self.forceField(xk1)
-                vk2 = (dt/2)*k2
-                xk2 = Particle.Pos + (dt/2)*vk2
-
-                k3  = self.forceField(xk2)
-                vk3 = (dt/2)*k3
-                xk3 = Particle.Pos + (dt/2)*vk3
-                
-                self.forceField.Evolve(dt/2)
-
-                k4  = self.forceField(xk3)
-                vk4 = (dt)*k4
-                xk4 = Particle.Pos + (dt)*vk4
-                
-                Acceleration  = (1./6.)*(k1+(2.*k2)+(2.*k3)+k4)
-                Particle.Acc  = Acceleration
-
-                Particle.Evolve(dt)
-
-    def GeneratePlots(self,mode="Save"):
-        plt.clf()
-        plt.title("Orbits")
-        plt.xlabel("AU")
-        plt.ylabel("AU")
-        for Particle in self.Particles:
-            plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
-        plt.legend(loc="best")
-        if(mode=="Show"):
-            plt.show()
-        elif (mode=="Save"):
-            plt.savefig("Orbits.png")
-
-        self.forceField.GeneratePlots(mode)
-
-    def GenerateVideo(self,Name):
-        VG = VideoGenerator(Name,self.Particles)
-        VG.Generate()
-
-class ForceFieldGenerator:
-
-    def __init__(self,Particles):
-        self.Particles = Particles
-        
-    def GravitationalForce(self,r):
-
-        '''
-            Arguments:
-
-                r : Position Vector
-        '''
-
-        return (G/pow(r*r,1.5))*r
-    
-    def RemoveLastTrack(self):
-        for Particle in self.Particles:
-            Particle.RemoveLastTrack()
-
-    def GoToCM(self):
-        R = Vector(0,0,0)
-        P = Vector(0,0,0)
-        M = 0
-        for Particle in self.Particles:
-            R = R + Particle.Mas*Particle.Pos
-            P = P + Particle.Mas*Particle.Vel
-            M = M + Particle.Mas
-        
-        self.Velocity = (1.0/M)*P
-        self.Position = (1.0/M)*R
-        
-        for Particle in self.Particles:
-            Particle.Vel = Particle.Vel - self.Velocity
-            Particle.Pos = Particle.Pos - self.Position
-
-    def GeneratePlots(self,mode="Save"):
-        plt.clf()
-        plt.title("Force Field Orbits")
-        plt.xlabel("AU")
-        plt.ylabel("AU")
-        for Particle in self.Particles:
-            plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
-        plt.legend(loc="best")
-        if(mode=="Show"):
-            plt.show()
-        elif (mode=="Save"):
-            plt.savefig("Force Field Orbits.png")
-
-    def Evolve(self,dt):
-        for i,Particle1 in enumerate(self.Particles):
-            Acceleration = Vector(0,0,0)
-            for j,Particle2 in enumerate(self.Particles):
-                if i == j:
-                    continue
-                r  = Particle2.Pos - Particle1.Pos
-                Acceleration = Acceleration + Particle2.Mas*self.GravitationalForce(r)
-            Particle1.Acc = Acceleration
-            Particle1.Evolve(dt)
-
-    def __call__(self,Position):
-        TotalForce = Vector(0,0,0)
-        for i,Particle1 in enumerate(self.Particles):
-            r = Particle1.Pos - Position
-            TotalForce = TotalForce + Particle1.Mas*self.GravitationalForce(r)
-        return TotalForce
