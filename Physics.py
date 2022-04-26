@@ -63,6 +63,9 @@ class Vector:
     def __str__(self):
         return "("+str(self.x)+","+str(self.y)+","+str(self.z)+")"
 
+    def GetTheta(self):
+        return np.arctan2(self.y,self.x)
+
 class Particle:
     
     '''
@@ -81,10 +84,18 @@ class Particle:
         self.Col = Color
         self.Tra = [[],[],[]]
 
+        self.IniPos = self.Pos
+        self.IniVel = self.Vel
+
     def RemoveLastTrack(self):
         
         for i in range(3):
             del self.Tra[i][-1]
+
+    def ClearTrajectory(self):
+        self.Tra = [[],[],[]]
+        self.Pos = self.IniPos
+        self.Vel = self.IniVel
         
     def Evolve(self,dt,Omega=Vector(0.,0.,0.)):
         
@@ -95,7 +106,9 @@ class Particle:
         self.Tra[0].append(self.Pos.x)
         self.Tra[1].append(self.Pos.y)
         self.Tra[2].append(self.Pos.z)
-    
+  
+##################################
+
 class Simulator:
     
     '''
@@ -123,6 +136,8 @@ class Simulator:
     
     # Go to the Center of mass
     def GoToCM(self):
+
+        print("Going to the CM")
         R = Vector(0,0,0)
         P = Vector(0,0,0)
         M = 0
@@ -137,6 +152,7 @@ class Simulator:
         for Particle in self.Particles:
             Particle.Vel = Particle.Vel - self.Velocity
             Particle.Pos = Particle.Pos - self.Position
+            print(Particle.Nam,Particle.Pos,Particle.Vel)
     
     # Go back to the system where things were defined
     def GoToLab(self):
@@ -314,6 +330,14 @@ class Simulator:
         VG = VideoGenerator(Name,self.Particles)
         VG.Generate()
 
+    def ClearTrajectories(self):
+        for Particle in self.Particles:
+            Particle.ClearTrajectory()
+
+##################################
+
+# Differentiates between two classes of particles 
+
 class StaticSimulator:
 
     ''' 
@@ -334,15 +358,16 @@ class StaticSimulator:
 
         '''
             Shifts into the Center of mass of the Sources and then 
-            sifhts all particles into this frame
+            shifts all particles into this frame
         '''
-
+        # print("Going into the CM of the Force Field")
         self.forceField.GoToCM()
         self.Position = self.forceField.Position
         self.Velocity = self.forceField.Velocity
         for Particle in self.Particles:
             Particle.Pos = Particle.Pos - self.Position
             Particle.Vel = Particle.Vel - self.Velocity
+            # print(Particle.Nam,Particle.Pos,Particle.Vel)
 
     def Simulate(self,Time,Steps,Method):
 
@@ -366,7 +391,7 @@ class StaticSimulator:
         while t < Time: 
            
             t += dt
-            self.forceField.Evolve(dt)
+            self.forceField.Evolve(dt,"Euler")
 
             for Particle in self.Particles:
                 Particle.Acc = self.forceField(Particle.Pos)
@@ -400,7 +425,7 @@ class StaticSimulator:
                 # Here we step on the Force Field but delete the track 
                 # to keep the trajectories of sources and particles of equal length
 
-                self.forceField.Evolve(dt/2)
+                self.forceField.Evolve(dt/2,"RK4")
                 self.forceField.RemoveLastTrack()
 
                 k2  = self.forceField(xk1)
@@ -413,7 +438,7 @@ class StaticSimulator:
                 
                 # Second step on the Force Field, now we keep the track
 
-                self.forceField.Evolve(dt/2)
+                self.forceField.Evolve(dt/2,"RK4")
 
                 k4  = self.forceField(xk3)
                 vk4 = (dt)*k4
@@ -422,9 +447,9 @@ class StaticSimulator:
                 Acceleration  = (1./6.)*(k1+(2.*k2)+(2.*k3)+k4)
                 Particle.Acc  = Acceleration
 
-                Particle.Evolve(dt)
+                Particle.Evolve(dt,"RK4")
 
-    def GeneratePlots(self,mode="Save"):
+    def GeneratePlots(self,args):
         plt.clf()
         plt.title("Orbits")
         plt.xlabel("AU")
@@ -432,16 +457,29 @@ class StaticSimulator:
         for Particle in self.Particles:
             plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
         plt.legend(loc="best")
-        if(mode=="Show"):
+        if(args["mode"]=="Show"):
             plt.show()
-        elif (mode=="Save"):
-            plt.savefig("Orbits.png")
-
-        self.forceField.GeneratePlots(mode)
+        elif (args["mode"]=="Save"):
+            try:
+                filename = args["filename"]
+            except:
+                print("Error: No filename given!")
+                return
+            
+            plt.savefig(filename+".png")
 
     def GenerateVideo(self,Name):
         VG = VideoGenerator(Name,self.Particles)
         VG.Generate()
+
+    def ClearTrajectories(self):
+        self.forceField.ClearTrajectories()
+        for Particle in self.Particles:
+            Particle.ClearTrajectory()
+
+# Any cofiguration of stars that we wish to study
+# they all interract with themselves but not with 
+# the testers from the Satatic Simulator
 
 class ForceFieldGenerator:
 
@@ -451,7 +489,7 @@ class ForceFieldGenerator:
         Force Field Source
 
             Holds:
-                Particles : All sorces which evolve through Gravitational Forces 
+                Particles : All sources which evolve through Gravitational Forces 
 
     '''
 
@@ -502,6 +540,7 @@ class ForceFieldGenerator:
         for Particle in self.Particles:
             Particle.Vel = Particle.Vel - self.Velocity
             Particle.Pos = Particle.Pos - self.Position
+            # print(Particle.Nam,Particle.Pos,Particle.Vel)
 
     def GeneratePlots(self,mode="Save"):
         plt.clf()
@@ -518,7 +557,7 @@ class ForceFieldGenerator:
 
     def Evolve(self,dt,Method="RK4"):
         self.Methods[Method](dt)
-
+        
     def EvolveRK4(self,dt):
             for i,Particle1 in enumerate(self.Particles):
                 Particle1.Acc = Vector(0,0,0)
@@ -546,7 +585,8 @@ class ForceFieldGenerator:
                     Acceleration  = (1./6.)*(k1+(2.*k2)+(2.*k3)+k4)
                     Particle1.Acc  = Particle1.Acc + Acceleration 
 
-                Particle1.Evolve(dt)
+            for Particle in self.Particles:
+                Particle.Evolve(dt)
 
     def EvolveEuler(self,dt):
         for i,Particle1 in enumerate(self.Particles):
@@ -557,14 +597,33 @@ class ForceFieldGenerator:
                 r  = Particle2.Pos - Particle1.Pos
                 Acceleration = Acceleration + Particle2.Mas*self.GravitationalForce(r)
             Particle1.Acc = Acceleration
-            Particle1.Evolve(dt)
-
+        for Particle in self.Particles:
+            Particle.Evolve(dt)
+        
     def __call__(self,Position):
         TotalForce = Vector(0,0,0)
         for i,Particle1 in enumerate(self.Particles):
             r = Particle1.Pos - Position
             TotalForce = TotalForce + Particle1.Mas*self.GravitationalForce(r)
         return TotalForce
+
+    def FindRadius(self):
+        Radius = 0
+        for i,Particle1 in enumerate(self.Particles):
+            for j,Particle2 in enumerate(self.Particles):
+                if i==j:
+                    continue
+                r = Particle1.Pos - Particle2.Pos
+                r = math.sqrt(r*r)
+                if (r > Radius):
+                    Radius = r
+        return r
+
+    def ClearTrajectories(self):
+        for Particle in self.Particles:
+            Particle.ClearTrajectory()
+
+##################################
 
 # Currently Unused
 class Tracker:
@@ -602,6 +661,217 @@ class Tracker:
         if(Mode=="Show"):
             plt.show()
         elif (Mode=="Save"):
-            plt.savefig("Distace between Satrs.png")
+            plt.savefig(self.Name+".png")
         else:
             print("Error: Unrecognized tracker plot generator mode:",Mode)
+
+# 
+class Simulator2:
+
+    def __init__(self,Name,Particles=[]):
+        self.Name = Name
+        self.Velocity  = Vector(0,0,0)
+        self.Position  = Vector(0,0,0)
+        self.Omega     = Vector(0,0,0)
+        self.DOmega    = Vector(0,0,0)
+        self.Velocity  = Vector(0,0,0)
+        self.Particles = Particles
+    
+    # Go to the Center of mass
+    def GoToCM(self):
+        R = Vector(0,0,0)
+        P = Vector(0,0,0)
+        M = 0
+        for Particle in self.Particles:
+            R = R + Particle.Mas*Particle.Pos
+            P = P + Particle.Mas*Particle.Vel
+            M = M + Particle.Mas
+        
+        self.Velocity = (1.0/M)*P
+        self.Position = (1.0/M)*R
+        
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Velocity
+            Particle.Pos = Particle.Pos - self.Position
+    
+    # Go back to the system where things were defined
+    def GoToLab(self):
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel + self.Velocity
+            Particle.Pos = Particle.Pos + self.Position
+        
+    def ComputeOmega(self):
+        
+        # L = ICM * Omega
+        self.GoToCM()
+        ICM = 0
+        L = Vector(0,0,0)
+        for Particle in self.Particles:
+            ICM += (Particle.Pos*Particle.Pos)*Particle.Mas
+            L    = L + Particle.Mas * (Particle.Pos @ Particle.Vel)
+        self.Omega = (1.0/ICM)*L
+        self.GoToLab()
+    
+    # Goes to Synodic, but Dynamics in the Synodic are unstable
+    def GoToSynodic(self):
+        
+        self.GoToCM()
+        ICM = 0
+        L = Vector(0,0,0)
+        for Particle in self.Particles:
+            ICM += (Particle.Pos*Particle.Pos)*Particle.Mas
+            L    = L + Particle.Mas * (Particle.Pos @ Particle.Vel)
+        self.Omega = (1.0/ICM)*L
+        
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Omega @ Particle.Pos
+        
+        print("ICM : ",ICM)
+        print("The Anagular Velocity of the Synodic system is:",self.Omega)
+    
+    # Do not use, only for debug
+    def SetOmega(self,Omega):
+        self.Omega = Omega
+        for Particle in self.Particles:
+            Particle.Vel = Particle.Vel - self.Omega @ Particle.Pos
+    
+    def Simulate(self,Time,Steps):
+        
+        t = 0
+        dt = Time/Steps
+        
+
+        GravitationalField = lambda r1,r2 : (-G/math.pow((r1-r2)*(r1-r2),1.5))*(r1-r2)
+        NonInertialField   = lambda r,v   : -2.0*(self.Omega @ v) - self.Omega @ (self.Omega @ r) - self.DOmega @ r 
+
+        while t < Time: 
+
+            t += dt
+        
+            for i, Particle1 in enumerate(self.Particles):
+            
+                r1 = Particle1.Pos
+                v1 = Particle1.Vel 
+                Particle1.Acc = Vector(0,0,0)
+
+                Particle1.Acc = Particle1.Acc + NonInertialField(r1,v1)
+
+                # k1  = NonInertialField(r1,v1)
+                # vk1 = (dt/2)*k1
+                # xk1 = r1 + (dt/2)*vk1
+    
+                # k2  = NonInertialField(xk1,v1+vk1)
+                # vk2 = (dt/2)*k2
+                # xk2 = r1 + (dt/2)*vk2
+    
+                # k3  = NonInertialField(xk2,v1)
+                # vk3 = (dt/2)*k3
+                # xk3 = r1 + (dt/2)*vk3
+                    
+                # k4  = NonInertialField(xk3,v1)
+
+                # Acceleration  = (1./6.)*(k1+(2.*k2)+(2.*k3)+k4)
+
+                # Particle1.Acc = Particle1.Acc + Acceleration
+                
+                # Coriolis Acceleration
+                # Particle1.Acc = Particle1.Acc - 2.0*(self.Omega @ Particle1.Vel)
+                
+                # Centrifugal Acceleration
+                # Particle1.Acc = Particle1.Acc - self.Omega @ (self.Omega @ Particle1.Pos)
+
+                #Euler Force
+                # Particle1.Acc = Particle1.Acc - self.DOmega @ Particle1.Pos
+
+                for j,Particle2 in enumerate(self.Particles):
+                    if i == j:
+                        continue
+
+                    r2 = Particle2.Pos
+                    
+                    # k1  = GravitationalField(r1,r2)
+                    # vk1 = (dt/2)*k1
+                    # xk1 = r1 + (dt/2)*vk1
+    
+                    # k2  = GravitationalField(xk1,r2)
+                    # vk2 = (dt/2)*k2
+                    # xk2 = r1 + (dt/2)*vk2
+    
+                    # k3  = GravitationalField(xk2,r2)
+                    # vk3 = (dt/2)*k3
+                    # xk3 = r1 + (dt/2)*vk3
+                    
+                    # k4  = GravitationalField(xk3,r2)
+                    
+                    # Acceleration  = (1./6.)*(k1+(2.*k2)+(2.*k3)+k4)
+                    
+                    # Particle1.Acc = Particle1.Acc + Particle2.Mas*Acceleration
+
+                    Particle1.Acc = Particle1.Acc + Particle2.Mas*GravitationalField(r1,r2)
+
+           
+            # Time Evolution
+        
+            for Particle in self.Particles:
+                Particle.Evolve(dt,self.Omega)
+
+    def GeneratePlots(self,mode="Save"):
+        plt.clf()
+        plt.title(self.Name+" Orbits")
+        plt.xlabel("AU")
+        plt.ylabel("AU")
+        for Particle in self.Particles:
+            plt.plot(Particle.Tra[0],Particle.Tra[1],label=Particle.Nam)
+        plt.legend(loc="best")
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig(self.Name+" Orbits.png")
+
+        plt.clf()
+        plt.title(self.Name+" Distances")
+        plt.xlabel("dt")
+        plt.ylabel("AU")
+        xAxis = [ i for i in range(len(self.Particles[0].Tra[0]))]
+        for i,Particle1 in enumerate(self.Particles):
+            for j,Particle2 in enumerate(self.Particles):
+                if i>=j:
+                    continue
+                yAxis = []
+                for t in range(len(xAxis)):
+                    r = Vector(Particle1.Tra[0][t],Particle1.Tra[1][t],Particle1.Tra[2][t])
+                    r = r - Vector(Particle2.Tra[0][t],Particle2.Tra[1][t],Particle2.Tra[2][t])
+                    yAxis.append(math.sqrt(r*r))
+                plt.plot(xAxis,yAxis,label=Particle1.Nam+"-"+Particle2.Nam+" Distance")
+        plt.legend(loc="best")
+        if(mode=="Show"):
+            plt.show()
+        elif (mode=="Save"):
+            plt.savefig(self.Name+" Distances.png")
+
+    def GenerateVideo(self):
+        VG = VideoGenerator(self.Name+" Video",self.Particles)
+        VG.Generate()
+
+##################################
+
+class OrbitFinder(StaticSimulator):
+
+    def __init__(self,Particles,ForceFieldGenerator):
+        super().__init__(Particles,ForceFieldGenerator)
+        self.Scale  = 1.0
+        self.Factor = 10.
+
+    def FindScale(self,Time,dt):
+        Distance = 0.0
+        t = 0
+
+        while(t < Time):
+            self.forceField.Evolve(dt,"Euler")
+            R = self.forceField.FindRadius()
+            if (R > Distance):
+                Distance = R
+            t += dt
+
+        self.Scale = Distance
+

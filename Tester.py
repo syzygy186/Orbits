@@ -19,6 +19,7 @@ def main():
         Particles.append(Particle("Planet "+str(i+1),Mass,Position,Velocity,WHITE))
     
     Test_Static = True
+    Test_Vanilla = False
     Time  = 0.2
     Steps = 750
 
@@ -30,13 +31,20 @@ def main():
         BinaryStarSimulation.GeneratePlots(mode="Save")
         BinaryStarSimulation.GenerateVideo("Binary System 2")
     
-    else:
+    elif Test_Vanilla:
 
         BasicSimulator = Simulator(Particles+[Sun1,Sun2])
         BasicSimulator.GoToCM()
         BasicSimulator.Simulate(Time,Steps)
         BasicSimulator.GeneratePlots(mode="Save")
         BasicSimulator.GenerateVideo("Binary System 1")
+
+    else:
+
+        OF = OrbitFinder([],BinaryStarPotential)
+        OF.GoToCM()
+        OF.FindScale(5,5E-3)
+
 
 if __name__ == '__main__':
     main()

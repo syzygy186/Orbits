@@ -56,10 +56,10 @@ class VideoGenerator:
             frame = np.zeros((self.Height,self.Width,self.Channels), dtype=np.uint8)
             for particle in self.Particles:
                 x,y = GetPixel(particle.Tra[0][frame_count],particle.Tra[1][frame_count])
-                for xC in range(4):
-                    for yC in range(4):
+                for xC in range(10):
+                    for yC in range(10):
                         for rbg in range(self.Channels):
-                            frame[self.Height-(y+yC-2)][(x+xC-2)][rbg] = particle.Col[rbg]
+                            frame[self.Height-(y+yC-5)][(x+xC-5)][rbg] = particle.Col[rbg]
             video.write(frame)
         print()
  
